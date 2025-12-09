@@ -23,9 +23,9 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "GEMINI_KEY not set" });
     }
 
-    // ✅ Correct Gemini endpoint
+    // ✅ NEW WORKING ENDPOINT FOR YOUR KEY
     const geminiUrl =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
+      "https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash-latest:generateContent?key=" +
       apiKey;
 
     const geminiRes = await fetch(geminiUrl, {
@@ -34,7 +34,6 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         contents: [
           {
-            role: "user",
             parts: [{ text: prompt }]
           }
         ]
@@ -50,9 +49,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // Extract text response
     const reply =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response from Gemini.";
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No response from Gemini.";
 
     return res.status(200).json({ reply });
 
