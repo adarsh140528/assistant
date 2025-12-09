@@ -13,15 +13,16 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Use POST method" });
     }
 
-    // 🔥 MANUAL JSON PARSING (Fix for Vercel!)
+    // Read body (Node.js Serverless Function)
     let rawBody = "";
-    for await (const chunk of req) rawBody += chunk;
+    req.on("data", chunk => rawBody += chunk);
+    await new Promise(resolve => req.on("end", resolve));
 
     let body;
     try {
       body = JSON.parse(rawBody);
     } catch (err) {
-      return res.status(400).json({ error: "Invalid JSON body" });
+      return res.status(400).json({ error: "Invalid JSON body", rawBody });
     }
 
     const prompt = body.prompt;
@@ -34,7 +35,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "GEMINI_KEY not set" });
     }
 
-    // Correct Gemini endpoint
+    // Gemini v1beta2 Endpoint
     const endpoint =
       "https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash-latest:generateContent?key=" +
       apiKey;
@@ -43,11 +44,7 @@ export default async function handler(req, res) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }]
-          }
-        ]
+        contents: [{ parts: [{ text: prompt }] }]
       })
     });
 
@@ -65,6 +62,7 @@ export default async function handler(req, res) {
       "No response from Gemini.";
 
     return res.status(200).json({ reply });
+
   } catch (err) {
     return res.status(500).json({
       error: "Server crashed",
