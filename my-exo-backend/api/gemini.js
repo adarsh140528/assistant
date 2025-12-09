@@ -13,29 +13,24 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Use POST method" });
     }
 
-    // Read body (Node.js Serverless Function)
+    // Read JSON body manually
     let rawBody = "";
-    req.on("data", chunk => rawBody += chunk);
-    await new Promise(resolve => req.on("end", resolve));
+    for await (const chunk of req) rawBody += chunk;
 
     let body;
     try {
       body = JSON.parse(rawBody);
     } catch (err) {
-      return res.status(400).json({ error: "Invalid JSON body", rawBody });
+      return res.status(400).json({ error: "Invalid JSON", rawBody });
     }
 
     const prompt = body.prompt;
     if (!prompt) {
-      return res.status(400).json({ error: "Missing 'prompt'" });
+      return res.status(400).json({ error: "Missing prompt" });
     }
 
     const apiKey = process.env.GEMINI_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_KEY not set" });
-    }
 
-    // Gemini v1beta2 Endpoint
     const endpoint =
       "https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash-latest:generateContent?key=" +
       apiKey;
@@ -59,7 +54,7 @@ export default async function handler(req, res) {
 
     const reply =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No response from Gemini.";
+      "No response from Gemini";
 
     return res.status(200).json({ reply });
 
