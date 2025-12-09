@@ -13,7 +13,18 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Use POST method" });
     }
 
-    const { prompt } = req.body || {};
+    // 🔥 MANUAL JSON PARSING (Fix for Vercel!)
+    let rawBody = "";
+    for await (const chunk of req) rawBody += chunk;
+
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (err) {
+      return res.status(400).json({ error: "Invalid JSON body" });
+    }
+
+    const prompt = body.prompt;
     if (!prompt) {
       return res.status(400).json({ error: "Missing 'prompt'" });
     }
@@ -23,12 +34,12 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "GEMINI_KEY not set" });
     }
 
-    // ✅ NEW WORKING ENDPOINT FOR YOUR KEY
-    const geminiUrl =
+    // Correct Gemini endpoint
+    const endpoint =
       "https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash-latest:generateContent?key=" +
       apiKey;
 
-    const geminiRes = await fetch(geminiUrl, {
+    const geminiRes = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -54,7 +65,6 @@ export default async function handler(req, res) {
       "No response from Gemini.";
 
     return res.status(200).json({ reply });
-
   } catch (err) {
     return res.status(500).json({
       error: "Server crashed",
