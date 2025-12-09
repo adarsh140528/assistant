@@ -13,21 +13,19 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Use POST method" });
     }
 
-    // Read JSON body (Vercel parses req.body for us)
     const { prompt } = req.body || {};
-
-    if (!prompt || typeof prompt !== "string") {
-      return res.status(400).json({ error: "Missing or invalid 'prompt' in body" });
+    if (!prompt) {
+      return res.status(400).json({ error: "Missing 'prompt'" });
     }
 
     const apiKey = process.env.GEMINI_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_KEY not set in environment" });
+      return res.status(500).json({ error: "GEMINI_KEY not set" });
     }
 
-    // Call Gemini API
-    const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey,
+    // NEW WORKING ENDPOINT + MODEL
+    const geminiRes = await fetch(
+      "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + apiKey,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -38,51 +36,26 @@ export default async function handler(req, res) {
               parts: [{ text: prompt }]
             }
           ]
-          // If tools cause issues, we can add them later:
-          // tools: [{ google_search: {} }]
         })
       }
     );
 
-    const data = await geminiResponse.json();
+    const data = await geminiRes.json();
 
-    // If Gemini returned an error object
-    if (!geminiResponse.ok || data.error) {
+    if (!geminiRes.ok || data.error) {
       return res.status(500).json({
         error: "Gemini API error",
-        status: geminiResponse.status,
         details: data
       });
     }
 
-    // Safely extract text from candidates
-    const candidates = data.candidates;
-    if (!Array.isArray(candidates) || candidates.length === 0) {
-      return res.status(500).json({
-        error: "Gemini returned no text",
-        details: data
-      });
-    }
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
+    return res.status(200).json({ reply });
 
-    const parts = candidates[0].content?.parts || [];
-    const text = parts
-      .map(p => p.text || "")
-      .join(" ")
-      .trim();
-
-    if (!text) {
-      return res.status(500).json({
-        error: "Gemini returned empty response",
-        details: data
-      });
-    }
-
-    return res.status(200).json({ reply: text });
   } catch (err) {
-    console.error("SERVER ERROR:", err);
     return res.status(500).json({
       error: "Server crashed",
-      details: String(err)
+      details: err.message
     });
   }
 }
