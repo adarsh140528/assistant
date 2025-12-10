@@ -1,32 +1,37 @@
-export default async function handler(req, res) {
+export const config = {
+  runtime: "edge",
+};
+
+export default async function handler(req) {
   try {
-    // CORS
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+    // Handle OPTIONS (CORS preflight)
     if (req.method === "OPTIONS") {
-      return res.status(200).end();
+      return new Response(null, {
+        status: 200,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
     }
 
+    // Block non-POST
     if (req.method !== "POST") {
-      return res.status(405).json({ error: "Use POST method" });
+      return new Response(
+        JSON.stringify({ error: "Use POST method only" }),
+        { status: 405 }
+      );
     }
 
-    // Read JSON body manually
-    let rawBody = "";
-    for await (const chunk of req) rawBody += chunk;
+    // Read JSON body (Edge functions support this directly!)
+    const { prompt } = await req.json();
 
-    let body;
-    try {
-      body = JSON.parse(rawBody);
-    } catch (err) {
-      return res.status(400).json({ error: "Invalid JSON", rawBody });
-    }
-
-    const prompt = body.prompt;
     if (!prompt) {
-      return res.status(400).json({ error: "Missing prompt" });
+      return new Response(
+        JSON.stringify({ error: "Missing 'prompt'" }),
+        { status: 400 }
+      );
     }
 
     const apiKey = process.env.GEMINI_KEY;
@@ -35,33 +40,38 @@ export default async function handler(req, res) {
       "https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash-latest:generateContent?key=" +
       apiKey;
 
+    // Call Gemini API
     const geminiRes = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
-      })
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
     });
 
     const data = await geminiRes.json();
 
-    if (!geminiRes.ok || data.error) {
-      return res.status(500).json({
-        error: "Gemini API error",
-        details: data
+    if (data.error) {
+      return new Response(JSON.stringify({ error: "Gemini API error", details: data }), {
+        status: 500,
       });
     }
 
     const reply =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No response from Gemini";
+      "No response from Gemini.";
 
-    return res.status(200).json({ reply });
-
-  } catch (err) {
-    return res.status(500).json({
-      error: "Server crashed",
-      details: err.message
+    return new Response(JSON.stringify({ reply }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
     });
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: "Server crashed", details: err.message }),
+      { status: 500 }
+    );
   }
 }
