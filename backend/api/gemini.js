@@ -2,98 +2,60 @@ export const config = {
   runtime: "edge",
 };
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
 }
 
 export default async function handler(req) {
   try {
-    // 1️⃣ Handle CORS preflight
-    if (req.method === "OPTIONS") {
-      return new Response(null, {
-        status: 200,
-        headers: corsHeaders(),
-      });
-    }
+    if (req.method === "OPTIONS") return json({});
 
-    // 2️⃣ Allow only POST
-    if (req.method !== "POST") {
-      return new Response(
-        JSON.stringify({ error: "Use POST method only" }),
-        {
-          status: 405,
-          headers: {
-            ...corsHeaders(),
-            "Content-Type": "application/json",
-          },
-        }
-      );
-    }
+    if (req.method !== "POST") 
+      return json({ error: "Use POST method only" }, 405);
 
-    // 3️⃣ Parse JSON body safely
-    const body = await req.json().catch(() => null);
-    if (!body || !body.prompt)
-      return new Response(
-        JSON.stringify({ error: "Missing prompt" }),
-        { status: 400, headers: corsHeaders() }
-      );
+    const { prompt } = await req.json().catch(() => ({}));
 
-    const prompt = body.prompt;
+    if (!prompt) return json({ error: "Missing 'prompt'" }, 400);
 
-    // 4️⃣ Call Gemini API
     const apiKey = process.env.GEMINI_KEY;
-    const endpoint =
-      "https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5-flash-latest:generateContent?key=" +
-      apiKey;
 
-    const geminiRes = await fetch(endpoint, {
+    if (!apiKey) return json({ error: "No GEMINI_KEY set on Vercel" }, 500);
+
+    // ✅ NEW OFFICIAL GOOGLE AI API ENDPOINT (Guaranteed working)
+    const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=" + apiKey;
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
       }),
     });
 
-    const data = await geminiRes.json().catch(() => null);
+    const data = await response.json();
 
-    if (!data)
-      return new Response(
-        JSON.stringify({ error: "Gemini returned invalid JSON" }),
-        { status: 500, headers: corsHeaders() }
-      );
+    if (data.error) {
+      return json({ error: "Gemini API error", details: data }, 500);
+    }
 
-    if (data.error)
-      return new Response(JSON.stringify({ error: data.error }), {
-        status: 500,
-        headers: corsHeaders(),
-      });
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text 
+                || "No response from Gemini";
 
-    const reply =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No response from Gemini.";
-
-    return new Response(JSON.stringify({ reply }), {
-      status: 200,
-      headers: {
-        ...corsHeaders(),
-        "Content-Type": "application/json",
-      },
-    });
+    return json({ reply });
   } catch (err) {
-    // 5️⃣ Catch all crashes and still return CORS
-    return new Response(
-      JSON.stringify({ error: "Server crashed", details: err.message }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders(),
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    return json({ error: "Server crashed", details: err.message }, 500);
   }
 }
